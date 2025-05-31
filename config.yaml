@@ -1,0 +1,35 @@
+server:
+  host: "0.0.0.0"
+  port: "12000"
+
+database:
+  host: "localhost"
+  port: "5432"
+  user: "postgres"
+  password: "postgres"
+  dbname: "online_shop"
+  sslmode: "disable"
+
+redis:
+  host: "localhost"
+  port: "6379"
+  password: ""
+  db: 0
+
+elasticsearch:
+  url: "http://localhost:9200"
+  username: ""
+  password: ""
+
+jwt:
+  secret_key: "your-super-secret-jwt-key-here"
+  expiry_hours: 24
+
+midtrans:
+  server_key: "your-midtrans-server-key"
+  client_key: "your-midtrans-client-key"
+  environment: "sandbox"
+
+grpc:
+  host: "0.0.0.0"
+  port: "12001"

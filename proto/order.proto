@@ -1,0 +1,119 @@
+syntax = "proto3";
+
+package order;
+
+option go_package = "online-shop/proto/order";
+
+import "google/protobuf/timestamp.proto";
+
+service OrderService {
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+  rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
+  rpc GetUserOrders(GetUserOrdersRequest) returns (GetUserOrdersResponse);
+  rpc UpdateOrderStatus(UpdateOrderStatusRequest) returns (UpdateOrderStatusResponse);
+  rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
+  rpc ProcessPayment(ProcessPaymentRequest) returns (ProcessPaymentResponse);
+}
+
+message Order {
+  string id = 1;
+  string user_id = 2;
+  string status = 3; // pending, confirmed, processing, shipped, delivered, cancelled
+  double total_amount = 4;
+  string payment_status = 5; // pending, paid, failed, refunded
+  string payment_method = 6;
+  string shipping_address = 7;
+  repeated OrderItem items = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message OrderItem {
+  string id = 1;
+  string product_id = 2;
+  string product_name = 3;
+  double price = 4;
+  int32 quantity = 5;
+  double subtotal = 6;
+}
+
+message CreateOrderRequest {
+  string user_id = 1;
+  repeated OrderItemRequest items = 2;
+  string shipping_address = 3;
+  string payment_method = 4;
+}
+
+message OrderItemRequest {
+  string product_id = 1;
+  int32 quantity = 2;
+}
+
+message CreateOrderResponse {
+  bool success = 1;
+  string message = 2;
+  Order order = 3;
+  string payment_url = 4; // For Midtrans payment
+}
+
+message GetOrderRequest {
+  string order_id = 1;
+  string user_id = 2; // For authorization
+}
+
+message GetOrderResponse {
+  bool success = 1;
+  string message = 2;
+  Order order = 3;
+}
+
+message GetUserOrdersRequest {
+  string user_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+  string status = 4; // Optional filter
+}
+
+message GetUserOrdersResponse {
+  bool success = 1;
+  string message = 2;
+  repeated Order orders = 3;
+  int64 total = 4;
+}
+
+message UpdateOrderStatusRequest {
+  string order_id = 1;
+  string status = 2;
+  string updated_by = 3; // admin user id
+}
+
+message UpdateOrderStatusResponse {
+  bool success = 1;
+  string message = 2;
+  Order order = 3;
+}
+
+message CancelOrderRequest {
+  string order_id = 1;
+  string user_id = 2;
+  string reason = 3;
+}
+
+message CancelOrderResponse {
+  bool success = 1;
+  string message = 2;
+  Order order = 3;
+}
+
+message ProcessPaymentRequest {
+  string order_id = 1;
+  string payment_method = 2;
+  string payment_token = 3; // From Midtrans
+}
+
+message ProcessPaymentResponse {
+  bool success = 1;
+  string message = 2;
+  string payment_status = 3;
+  string transaction_id = 4;
+}

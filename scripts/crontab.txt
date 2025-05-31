@@ -1,0 +1,35 @@
+# Online Shop Cron Jobs
+# Add these entries to your crontab using: crontab -e
+
+# Database backup - Daily at 2:00 AM
+0 2 * * * /opt/online-shop/scripts/backup.sh > /var/log/online-shop/backup.log 2>&1
+
+# Log rotation - Daily at 3:00 AM
+0 3 * * * /usr/sbin/logrotate /etc/logrotate.d/online-shop
+
+# Clean temporary files - Daily at 4:00 AM
+0 4 * * * find /tmp/online-shop -type f -mtime +1 -delete 2>/dev/null
+
+# Update product search index - Every 6 hours
+0 */6 * * * curl -X POST http://localhost:8080/admin/search/reindex
+
+# Generate analytics reports - Daily at 5:00 AM
+0 5 * * * /opt/online-shop/scripts/generate_reports.sh
+
+# Health check - Every 5 minutes
+*/5 * * * * /opt/online-shop/scripts/health_check.sh
+
+# Clean expired sessions - Every hour
+0 * * * * /opt/online-shop/scripts/clean_sessions.sh
+
+# Process pending emails - Every minute
+* * * * * /opt/online-shop/scripts/process_email_queue.sh
+
+# Weekly full backup - Sundays at 1:00 AM
+0 1 * * 0 /opt/online-shop/scripts/backup.sh --full
+
+# Monthly cleanup of old logs - First day of month at 6:00 AM
+0 6 1 * * find /var/log/online-shop -name "*.log.*" -mtime +90 -delete
+
+# Restart workers daily at 6:00 AM to prevent memory leaks
+0 6 * * * systemctl restart online-shop-worker
