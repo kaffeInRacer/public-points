@@ -547,14 +547,16 @@ func (m *MockRabbitMQ) ExchangeDelete(exchangeName string, ifUnused, noWait bool
 func (m *MockRabbitMQ) GetChannel() *amqp.Channel {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return (*amqp.Channel)(m.channel)
+	// Return nil for mock - this is just for interface compliance
+	return nil
 }
 
 // GetConnection implements RabbitMQInterface
 func (m *MockRabbitMQ) GetConnection() *amqp.Connection {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return (*amqp.Connection)(m.connection)
+	// Return nil for mock - this is just for interface compliance
+	return nil
 }
 
 // IsConnected implements RabbitMQInterface

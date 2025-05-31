@@ -1,13 +1,13 @@
 package workers
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/sirupsen/logrus"
 
 	"online-shop/internal/infrastructure/queue"
+	"online-shop/internal/utils"
 	"online-shop/pkg/config"
 )
 
@@ -43,7 +43,7 @@ func (w *NotificationWorker) ProcessMessage(message queue.Message) error {
 
 	// Parse notification data
 	var notificationData NotificationData
-	if err := mapToStruct(message.Payload, &notificationData); err != nil {
+	if err := utils.MapToStruct(message.Payload, &notificationData); err != nil {
 		return fmt.Errorf("failed to parse notification data: %w", err)
 	}
 
@@ -200,11 +200,3 @@ func (w *NotificationWorker) sendInAppNotification(data NotificationData) error 
 	return nil
 }
 
-// Helper function to convert map to struct
-func mapToStruct(m map[string]interface{}, v interface{}) error {
-	data, err := json.Marshal(m)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(data, v)
-}

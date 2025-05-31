@@ -9,7 +9,7 @@ import (
 	"online-shop/internal/infrastructure/redis"
 	"online-shop/internal/infrastructure/database"
 	"online-shop/internal/infrastructure/elasticsearch"
-	pb "online-shop/online-shop/proto/product"
+	pb "online-shop/proto/generated/online-shop/proto/product"
 	"go.uber.org/zap"
 
 	"github.com/google/uuid"

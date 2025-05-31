@@ -2,13 +2,14 @@ package workers
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 
 	"online-shop/internal/infrastructure/queue"
+	"online-shop/internal/utils"
 	"online-shop/pkg/config"
 )
 
@@ -40,7 +41,7 @@ func (w *InvoiceWorker) ProcessMessage(message queue.Message) error {
 
 	// Parse invoice data
 	var invoiceData queue.InvoiceMessage
-	if err := mapToStruct(message.Payload, &invoiceData); err != nil {
+	if err := utils.MapToStruct(message.Payload, &invoiceData); err != nil {
 		return fmt.Errorf("failed to parse invoice data: %w", err)
 	}
 

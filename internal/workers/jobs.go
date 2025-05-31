@@ -2,12 +2,12 @@ package workers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/sirupsen/logrus"
 	"online-shop/internal/infrastructure/queue"
+	"online-shop/internal/utils"
 	"online-shop/pkg/config"
 	"online-shop/pkg/workerpool"
 )
@@ -26,7 +26,7 @@ func (j *EmailJob) Execute(ctx context.Context) error {
 
 	// Parse email data
 	var emailData queue.EmailMessage
-	if err := mapToStruct(j.Message.Payload, &emailData); err != nil {
+	if err := utils.MapToStruct(j.Message.Payload, &emailData); err != nil {
 		return fmt.Errorf("failed to parse email data: %w", err)
 	}
 
@@ -43,7 +43,7 @@ func (j *EmailJob) Execute(ctx context.Context) error {
 func (j *EmailJob) GetPriority() int {
 	// Parse email data to get priority
 	var emailData queue.EmailMessage
-	if err := mapToStruct(j.Message.Payload, &emailData); err == nil {
+	if err := utils.MapToStruct(j.Message.Payload, &emailData); err == nil {
 		return emailData.Priority
 	}
 	return 0 // Default priority
@@ -63,7 +63,7 @@ func (j *InvoiceJob) Execute(ctx context.Context) error {
 
 	// Parse invoice data
 	var invoiceData queue.InvoiceMessage
-	if err := mapToStruct(j.Message.Payload, &invoiceData); err != nil {
+	if err := utils.MapToStruct(j.Message.Payload, &invoiceData); err != nil {
 		return fmt.Errorf("failed to parse invoice data: %w", err)
 	}
 
@@ -297,11 +297,3 @@ func (j *ScheduledJob) GetPriority() int {
 	return j.OriginalJob.GetPriority()
 }
 
-// Helper function to convert map to struct
-func mapToStruct(m map[string]interface{}, v interface{}) error {
-	data, err := json.Marshal(m)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(data, v)
-}

@@ -3,6 +3,7 @@ package mocks
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 
 	"online-shop/internal/domain/entities"
@@ -26,7 +27,7 @@ func (m *MockUserRepository) Create(ctx context.Context, user *entities.User) er
 }
 
 // GetByID mocks the GetByID method
-func (m *MockUserRepository) GetByID(ctx context.Context, id string) (*entities.User, error) {
+func (m *MockUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*entities.User, error) {
 	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -50,7 +51,7 @@ func (m *MockUserRepository) Update(ctx context.Context, user *entities.User) er
 }
 
 // Delete mocks the Delete method
-func (m *MockUserRepository) Delete(ctx context.Context, id string) error {
+func (m *MockUserRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	args := m.Called(ctx, id)
 	return args.Error(0)
 }

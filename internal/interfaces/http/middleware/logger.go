@@ -4,11 +4,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
+	"github.com/sirupsen/logrus"
 )
 
 // RequestLogger returns a middleware that logs HTTP requests
-func RequestLogger(logger *zap.Logger) gin.HandlerFunc {
+func RequestLogger(logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
@@ -24,36 +24,36 @@ func RequestLogger(logger *zap.Logger) gin.HandlerFunc {
 		requestID := GetRequestID(c)
 
 		// Build log fields
-		fields := []zap.Field{
-			zap.String("request_id", requestID),
-			zap.String("method", c.Request.Method),
-			zap.String("path", path),
-			zap.String("query", raw),
-			zap.Int("status", c.Writer.Status()),
-			zap.Duration("latency", latency),
-			zap.String("ip", c.ClientIP()),
-			zap.String("user_agent", c.Request.UserAgent()),
-			zap.Int("body_size", c.Writer.Size()),
+		fields := logrus.Fields{
+			"request_id":  requestID,
+			"method":      c.Request.Method,
+			"path":        path,
+			"query":       raw,
+			"status":      c.Writer.Status(),
+			"latency":     latency,
+			"ip":          c.ClientIP(),
+			"user_agent":  c.Request.UserAgent(),
+			"body_size":   c.Writer.Size(),
 		}
 
 		// Add user ID if available
 		if userID, exists := c.Get("UserID"); exists {
-			fields = append(fields, zap.Any("user_id", userID))
+			fields["user_id"] = userID
 		}
 
 		// Add error if any
 		if len(c.Errors) > 0 {
-			fields = append(fields, zap.String("errors", c.Errors.String()))
+			fields["errors"] = c.Errors.String()
 		}
 
 		// Log based on status code
 		switch {
 		case c.Writer.Status() >= 500:
-			logger.Error("HTTP Request", fields...)
+			logger.WithFields(fields).Error("HTTP Request")
 		case c.Writer.Status() >= 400:
-			logger.Warn("HTTP Request", fields...)
+			logger.WithFields(fields).Warn("HTTP Request")
 		default:
-			logger.Info("HTTP Request", fields...)
+			logger.WithFields(fields).Info("HTTP Request")
 		}
 	}
 }

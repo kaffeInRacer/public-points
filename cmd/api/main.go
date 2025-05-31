@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"online-shop/internal/application/commands"
 	"online-shop/internal/application/queries"
 	"online-shop/internal/infrastructure/database"
@@ -18,15 +17,17 @@ import (
 )
 
 func main() {
-	// Initialize logger
-	logger.Init()
-	log := logger.GetLogger()
-
 	// Load configuration
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatal("Failed to load config: ", err)
+		panic("Failed to load config: " + err.Error())
 	}
+
+	// Initialize logger
+	logger.Init(&cfg.Logger)
+	log := logger.GetLogger()
+
+	log.Info("Starting API server")
 
 	// Initialize database
 	db, err := database.NewDatabase(&cfg.Database)
@@ -41,7 +42,7 @@ func main() {
 
 	// Initialize Redis
 	redisClient := redis.NewClient(&cfg.Redis)
-	cacheService := redis.NewCacheService(redisClient)
+	_ = redis.NewCacheService(redisClient) // Cache service for future use
 
 	// Initialize Elasticsearch
 	esClient, err := elasticsearch.NewClient(&cfg.Elasticsearch)

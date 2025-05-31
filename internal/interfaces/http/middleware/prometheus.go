@@ -137,7 +137,7 @@ func PrometheusMetrics() gin.HandlerFunc {
 		start := time.Now()
 
 		// Get request size
-		requestSize := computeApproximateRequestSize(c.Request)
+		requestSize := computeApproximateRequestSize(c)
 
 		// Process request
 		c.Next()

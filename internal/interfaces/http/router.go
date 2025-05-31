@@ -10,7 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
-	"go.uber.org/zap"
+	"github.com/sirupsen/logrus"
 
 	"online-shop/internal/interfaces/http/handlers"
 	"online-shop/internal/interfaces/http/middleware"
@@ -21,7 +21,7 @@ import (
 type Router struct {
 	engine      *gin.Engine
 	config      *config.Config
-	logger      *zap.Logger
+	logger      *logrus.Logger
 	userHandler *handlers.UserHandler
 	productHandler *handlers.ProductHandler
 	orderHandler *handlers.OrderHandler
@@ -31,7 +31,7 @@ type Router struct {
 // NewRouter creates a new HTTP router
 func NewRouter(
 	cfg *config.Config,
-	logger *zap.Logger,
+	logger *logrus.Logger,
 	userHandler *handlers.UserHandler,
 	productHandler *handlers.ProductHandler,
 	orderHandler *handlers.OrderHandler,
@@ -82,7 +82,7 @@ func (r *Router) SetupRoutes() {
 func (r *Router) setupGlobalMiddleware() {
 	// Recovery middleware
 	r.engine.Use(gin.CustomRecovery(func(c *gin.Context, recovered interface{}) {
-		r.logger.Error("Panic recovered", zap.Any("error", recovered))
+		r.logger.WithField("error", recovered).Error("Panic recovered")
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Internal server error",
 		})

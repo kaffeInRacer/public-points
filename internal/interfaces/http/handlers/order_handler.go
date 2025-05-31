@@ -137,3 +137,69 @@ func (h *OrderHandler) CancelOrder(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Order cancelled successfully"})
 }
+
+// GetCart handles getting user's cart
+func (h *OrderHandler) GetCart(c *gin.Context) {
+	// TODO: Implement get cart logic
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Get cart not implemented yet"})
+}
+
+// AddToCart handles adding item to cart
+func (h *OrderHandler) AddToCart(c *gin.Context) {
+	// TODO: Implement add to cart logic
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Add to cart not implemented yet"})
+}
+
+// UpdateCartItem handles updating cart item
+func (h *OrderHandler) UpdateCartItem(c *gin.Context) {
+	// TODO: Implement update cart item logic
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Update cart item not implemented yet"})
+}
+
+// RemoveFromCart handles removing item from cart
+func (h *OrderHandler) RemoveFromCart(c *gin.Context) {
+	// TODO: Implement remove from cart logic
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Remove from cart not implemented yet"})
+}
+
+// ClearCart handles clearing the cart
+func (h *OrderHandler) ClearCart(c *gin.Context) {
+	// TODO: Implement clear cart logic
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Clear cart not implemented yet"})
+}
+
+// ProcessPayment handles payment processing
+func (h *OrderHandler) ProcessPayment(c *gin.Context) {
+	// TODO: Implement payment processing logic
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Payment processing not implemented yet"})
+}
+
+// GetInvoice handles getting order invoice
+func (h *OrderHandler) GetInvoice(c *gin.Context) {
+	// TODO: Implement get invoice logic
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Get invoice not implemented yet"})
+}
+
+// GetOrders handles getting all orders (admin)
+func (h *OrderHandler) GetOrders(c *gin.Context) {
+	// TODO: Implement get all orders logic
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Get orders not implemented yet"})
+}
+
+// UpdateOrderStatus handles updating order status (admin)
+func (h *OrderHandler) UpdateOrderStatus(c *gin.Context) {
+	// TODO: Implement update order status logic
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Update order status not implemented yet"})
+}
+
+// ShipOrder handles shipping an order (admin)
+func (h *OrderHandler) ShipOrder(c *gin.Context) {
+	// TODO: Implement ship order logic
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Ship order not implemented yet"})
+}
+
+// RefundOrder handles refunding an order (admin)
+func (h *OrderHandler) RefundOrder(c *gin.Context) {
+	// TODO: Implement refund order logic
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Refund order not implemented yet"})
+}

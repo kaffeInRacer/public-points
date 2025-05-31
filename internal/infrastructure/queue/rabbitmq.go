@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/streadway/amqp"
-	"go.uber.org/zap"
+	"github.com/sirupsen/logrus"
 
 	"online-shop/pkg/config"
 )
@@ -17,7 +17,7 @@ type RabbitMQ struct {
 	conn    *amqp.Connection
 	channel *amqp.Channel
 	config  *config.Config
-	logger  *zap.Logger
+	logger  *logrus.Logger
 }
 
 // Message represents a queue message
@@ -65,7 +65,7 @@ const (
 )
 
 // NewRabbitMQ creates a new RabbitMQ connection
-func NewRabbitMQ(cfg *config.Config, logger *zap.Logger) (*RabbitMQ, error) {
+func NewRabbitMQ(cfg *config.Config, logger *logrus.Logger) (*RabbitMQ, error) {
 	// Build connection string
 	connStr := fmt.Sprintf("amqp://%s:%s@%s:%d/",
 		cfg.RabbitMQ.Username,
@@ -225,19 +225,18 @@ func (r *RabbitMQ) publishMessage(ctx context.Context, queueName string, message
 	)
 
 	if err != nil {
-		r.logger.Error("Failed to publish message",
-			zap.String("queue", queueName),
-			zap.String("message_id", message.ID),
-			zap.Error(err),
-		)
+		r.logger.WithFields(logrus.Fields{
+			"queue":      queueName,
+			"message_id": message.ID,
+		}).WithError(err).Error("Failed to publish message")
 		return fmt.Errorf("failed to publish message: %w", err)
 	}
 
-	r.logger.Debug("Message published successfully",
-		zap.String("queue", queueName),
-		zap.String("message_id", message.ID),
-		zap.String("type", message.Type),
-	)
+	r.logger.WithFields(logrus.Fields{
+		"queue":      queueName,
+		"message_id": message.ID,
+		"type":       message.Type,
+	}).Debug("Message published successfully")
 
 	return nil
 }
@@ -257,16 +256,16 @@ func (r *RabbitMQ) ConsumeMessages(ctx context.Context, queueName string, handle
 		return fmt.Errorf("failed to register consumer: %w", err)
 	}
 
-	r.logger.Info("Started consuming messages", zap.String("queue", queueName))
+	r.logger.WithField("queue", queueName).Info("Started consuming messages")
 
 	for {
 		select {
 		case <-ctx.Done():
-			r.logger.Info("Stopping message consumption", zap.String("queue", queueName))
+			r.logger.WithField("queue", queueName).Info("Stopping message consumption")
 			return ctx.Err()
 		case msg, ok := <-msgs:
 			if !ok {
-				r.logger.Warn("Message channel closed", zap.String("queue", queueName))
+				r.logger.WithField("queue", queueName).Warn("Message channel closed")
 				return fmt.Errorf("message channel closed")
 			}
 
@@ -279,39 +278,36 @@ func (r *RabbitMQ) ConsumeMessages(ctx context.Context, queueName string, handle
 func (r *RabbitMQ) processMessage(delivery amqp.Delivery, handler func(Message) error) {
 	var message Message
 	if err := json.Unmarshal(delivery.Body, &message); err != nil {
-		r.logger.Error("Failed to unmarshal message", zap.Error(err))
+		r.logger.WithError(err).Error("Failed to unmarshal message")
 		delivery.Nack(false, false) // Don't requeue malformed messages
 		return
 	}
 
-	r.logger.Debug("Processing message",
-		zap.String("message_id", message.ID),
-		zap.String("type", message.Type),
-		zap.Int("attempts", message.Attempts),
-	)
+	r.logger.WithFields(logrus.Fields{
+		"message_id": message.ID,
+		"type":       message.Type,
+		"attempts":   message.Attempts,
+	}).Debug("Processing message")
 
 	// Increment attempt counter
 	message.Attempts++
 
 	// Process the message
 	if err := handler(message); err != nil {
-		r.logger.Error("Failed to process message",
-			zap.String("message_id", message.ID),
-			zap.Error(err),
-		)
+		r.logger.WithFields(logrus.Fields{
+			"message_id": message.ID,
+		}).WithError(err).Error("Failed to process message")
 
 		// Check if we should retry
 		if message.Attempts < message.MaxRetries {
-			r.logger.Info("Requeuing message for retry",
-				zap.String("message_id", message.ID),
-				zap.Int("attempt", message.Attempts),
-				zap.Int("max_retries", message.MaxRetries),
-			)
+			r.logger.WithFields(logrus.Fields{
+				"message_id":  message.ID,
+				"attempt":     message.Attempts,
+				"max_retries": message.MaxRetries,
+			}).Info("Requeuing message for retry")
 			delivery.Nack(false, true) // Requeue for retry
 		} else {
-			r.logger.Error("Message exceeded max retries, sending to DLQ",
-				zap.String("message_id", message.ID),
-			)
+			r.logger.WithField("message_id", message.ID).Error("Message exceeded max retries, sending to DLQ")
 			delivery.Nack(false, false) // Don't requeue, send to DLQ
 		}
 		return
@@ -319,7 +315,7 @@ func (r *RabbitMQ) processMessage(delivery amqp.Delivery, handler func(Message) 
 
 	// Acknowledge successful processing
 	delivery.Ack(false)
-	r.logger.Debug("Message processed successfully", zap.String("message_id", message.ID))
+	r.logger.WithField("message_id", message.ID).Debug("Message processed successfully")
 }
 
 // Close closes the RabbitMQ connection

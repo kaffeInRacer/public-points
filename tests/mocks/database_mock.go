@@ -1,7 +1,6 @@
 package mocks
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
 	"sync"

@@ -9,7 +9,7 @@ import (
 	"online-shop/internal/domain/user"
 	"online-shop/internal/infrastructure/redis"
 	"online-shop/internal/infrastructure/database"
-	pb "online-shop/online-shop/proto/user"
+	pb "online-shop/proto/generated/online-shop/proto/user"
 	"online-shop/pkg/jwt"
 	
 	"go.uber.org/zap"

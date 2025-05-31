@@ -10,7 +10,7 @@ import (
 	"online-shop/internal/infrastructure/redis"
 	"online-shop/internal/infrastructure/database"
 	"online-shop/internal/infrastructure/payment"
-	pb "online-shop/online-shop/proto/order"
+	pb "online-shop/proto/generated/online-shop/proto/order"
 	"go.uber.org/zap"
 
 	"github.com/google/uuid"

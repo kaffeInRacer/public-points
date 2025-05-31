@@ -3,6 +3,7 @@ package mocks
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 
 	"online-shop/internal/domain/entities"
@@ -26,7 +27,7 @@ func (m *MockOrderRepository) Create(ctx context.Context, order *entities.Order)
 }
 
 // GetByID mocks the GetByID method
-func (m *MockOrderRepository) GetByID(ctx context.Context, id string) (*entities.Order, error) {
+func (m *MockOrderRepository) GetByID(ctx context.Context, id uuid.UUID) (*entities.Order, error) {
 	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -50,13 +51,13 @@ func (m *MockOrderRepository) Update(ctx context.Context, order *entities.Order)
 }
 
 // Delete mocks the Delete method
-func (m *MockOrderRepository) Delete(ctx context.Context, id string) error {
+func (m *MockOrderRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	args := m.Called(ctx, id)
 	return args.Error(0)
 }
 
 // GetByUserID mocks the GetByUserID method
-func (m *MockOrderRepository) GetByUserID(ctx context.Context, userID string, limit, offset int) ([]*entities.Order, error) {
+func (m *MockOrderRepository) GetByUserID(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*entities.Order, error) {
 	args := m.Called(ctx, userID, limit, offset)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -74,7 +75,7 @@ func (m *MockOrderRepository) List(ctx context.Context, limit, offset int) ([]*e
 }
 
 // UpdateStatus mocks the UpdateStatus method
-func (m *MockOrderRepository) UpdateStatus(ctx context.Context, id string, status entities.OrderStatus) error {
+func (m *MockOrderRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
 	args := m.Called(ctx, id, status)
 	return args.Error(0)
 }

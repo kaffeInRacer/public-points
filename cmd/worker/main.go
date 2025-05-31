@@ -8,8 +8,6 @@ import (
 	"syscall"
 	"time"
 
-	"go.uber.org/zap"
-
 	"online-shop/internal/infrastructure/queue"
 	"online-shop/internal/workers"
 	"online-shop/pkg/config"
@@ -18,24 +16,21 @@ import (
 
 func main() {
 	// Load configuration
-	cfg, err := config.Load()
+	cfg, err := config.LoadConfig()
 	if err != nil {
 		panic("Failed to load configuration: " + err.Error())
 	}
 
 	// Initialize logger
-	log, err := logger.NewLogger(cfg.Environment)
-	if err != nil {
-		panic("Failed to initialize logger: " + err.Error())
-	}
-	defer log.Sync()
+	logger.Init(&cfg.Logger)
+	log := logger.GetLogger()
 
-	log.Info("Starting worker service", zap.String("environment", cfg.Environment))
+	log.WithField("environment", cfg.Environment).Info("Starting worker service")
 
 	// Initialize RabbitMQ
 	rabbitmq, err := queue.NewRabbitMQ(cfg, log)
 	if err != nil {
-		log.Fatal("Failed to connect to RabbitMQ", zap.Error(err))
+		log.WithError(err).Fatal("Failed to connect to RabbitMQ")
 	}
 	defer rabbitmq.Close()
 
@@ -58,7 +53,7 @@ func main() {
 		defer wg.Done()
 		log.Info("Starting email worker")
 		if err := rabbitmq.ConsumeMessages(ctx, queue.EmailQueue, emailWorker.ProcessMessage); err != nil {
-			log.Error("Email worker stopped", zap.Error(err))
+			log.WithError(err).Error("Email worker stopped")
 		}
 	}()
 
@@ -68,7 +63,7 @@ func main() {
 		defer wg.Done()
 		log.Info("Starting invoice worker")
 		if err := rabbitmq.ConsumeMessages(ctx, queue.InvoiceQueue, invoiceWorker.ProcessMessage); err != nil {
-			log.Error("Invoice worker stopped", zap.Error(err))
+			log.WithError(err).Error("Invoice worker stopped")
 		}
 	}()
 
@@ -78,7 +73,7 @@ func main() {
 		defer wg.Done()
 		log.Info("Starting notification worker")
 		if err := rabbitmq.ConsumeMessages(ctx, queue.NotificationQueue, notificationWorker.ProcessMessage); err != nil {
-			log.Error("Notification worker stopped", zap.Error(err))
+			log.WithError(err).Error("Notification worker stopped")
 		}
 	}()
 
@@ -88,7 +83,7 @@ func main() {
 		defer wg.Done()
 		log.Info("Starting analytics worker")
 		if err := rabbitmq.ConsumeMessages(ctx, queue.AnalyticsQueue, analyticsWorker.ProcessMessage); err != nil {
-			log.Error("Analytics worker stopped", zap.Error(err))
+			log.WithError(err).Error("Analytics worker stopped")
 		}
 	}()
 
@@ -105,7 +100,7 @@ func main() {
 				return
 			case <-healthTicker.C:
 				if err := rabbitmq.HealthCheck(); err != nil {
-					log.Error("RabbitMQ health check failed", zap.Error(err))
+					log.WithError(err).Error("RabbitMQ health check failed")
 				}
 			}
 		}

@@ -1,13 +1,13 @@
 package workers
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/sirupsen/logrus"
 
 	"online-shop/internal/infrastructure/queue"
+	"online-shop/internal/utils"
 	"online-shop/pkg/config"
 )
 
@@ -51,7 +51,7 @@ func (w *AnalyticsWorker) ProcessMessage(message queue.Message) error {
 
 	// Parse analytics event
 	var event AnalyticsEvent
-	if err := mapToStruct(message.Payload, &event); err != nil {
+	if err := utils.MapToStruct(message.Payload, &event); err != nil {
 		return fmt.Errorf("failed to parse analytics event: %w", err)
 	}
 
@@ -183,11 +183,3 @@ func (w *AnalyticsWorker) updateRealTimeMetrics(event AnalyticsEvent) error {
 	return nil
 }
 
-// Helper function to convert map to struct
-func mapToStruct(m map[string]interface{}, v interface{}) error {
-	data, err := json.Marshal(m)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(data, v)
-}

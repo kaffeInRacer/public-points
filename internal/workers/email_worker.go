@@ -3,7 +3,6 @@ package workers
 import (
 	"bytes"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"net/smtp"
@@ -12,6 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"online-shop/internal/infrastructure/queue"
+	"online-shop/internal/utils"
 	"online-shop/pkg/config"
 )
 
@@ -42,7 +42,7 @@ func (w *EmailWorker) ProcessMessage(message queue.Message) error {
 
 	// Parse email data
 	var emailData queue.EmailMessage
-	if err := mapToStruct(message.Payload, &emailData); err != nil {
+	if err := utils.MapToStruct(message.Payload, &emailData); err != nil {
 		return fmt.Errorf("failed to parse email data: %w", err)
 	}
 
@@ -412,11 +412,3 @@ func (w *EmailWorker) loadTemplates() {
 	}
 }
 
-// Helper function to convert map to struct
-func mapToStruct(m map[string]interface{}, v interface{}) error {
-	data, err := json.Marshal(m)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(data, v)
-}
