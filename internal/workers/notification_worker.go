@@ -1,9 +1,11 @@
 package workers
 
 import (
+	"encoding/json"
 	"fmt"
+	"time"
 
-	"go.uber.org/zap"
+	"github.com/sirupsen/logrus"
 
 	"online-shop/internal/infrastructure/queue"
 	"online-shop/pkg/config"
@@ -12,11 +14,23 @@ import (
 // NotificationWorker handles notification processing
 type NotificationWorker struct {
 	config *config.Config
-	logger *zap.Logger
+	logger *logrus.Logger
+}
+
+// NotificationData represents notification data
+type NotificationData struct {
+	UserID      string                 `json:"user_id"`
+	Type        string                 `json:"type"`
+	Title       string                 `json:"title"`
+	Message     string                 `json:"message"`
+	Data        map[string]interface{} `json:"data"`
+	Priority    int                    `json:"priority"`
+	ScheduledAt *time.Time             `json:"scheduled_at,omitempty"`
+	Channels    []string               `json:"channels"` // email, sms, push, in-app
 }
 
 // NewNotificationWorker creates a new notification worker
-func NewNotificationWorker(cfg *config.Config, logger *zap.Logger) *NotificationWorker {
+func NewNotificationWorker(cfg *config.Config, logger *logrus.Logger) *NotificationWorker {
 	return &NotificationWorker{
 		config: cfg,
 		logger: logger,
@@ -25,173 +39,172 @@ func NewNotificationWorker(cfg *config.Config, logger *zap.Logger) *Notification
 
 // ProcessMessage processes a notification message
 func (w *NotificationWorker) ProcessMessage(message queue.Message) error {
-	w.logger.Info("Processing notification message", zap.String("message_id", message.ID))
+	w.logger.Info("Processing notification message", logrus.Fields{"message_id": message.ID})
 
-	// Extract notification type
-	notificationType, ok := message.Payload["type"].(string)
-	if !ok {
-		return fmt.Errorf("missing notification type")
+	// Parse notification data
+	var notificationData NotificationData
+	if err := mapToStruct(message.Payload, &notificationData); err != nil {
+		return fmt.Errorf("failed to parse notification data: %w", err)
 	}
 
-	// Process based on notification type
-	switch notificationType {
-	case "push_notification":
-		return w.processPushNotification(message.Payload)
+	// Check if notification is scheduled for later
+	if notificationData.ScheduledAt != nil && notificationData.ScheduledAt.After(time.Now()) {
+		w.logger.Info("Notification scheduled for later",
+			logrus.Fields{
+				"message_id":   message.ID,
+				"user_id":      notificationData.UserID,
+				"scheduled_at": notificationData.ScheduledAt,
+			})
+		// In a real implementation, you would reschedule this message
+		return nil
+	}
+
+	// Process notification for each channel
+	for _, channel := range notificationData.Channels {
+		if err := w.processNotificationChannel(notificationData, channel); err != nil {
+			w.logger.Error("Failed to process notification channel",
+				logrus.Fields{
+					"message_id": message.ID,
+					"user_id":    notificationData.UserID,
+					"channel":    channel,
+					"error":      err.Error(),
+				})
+			// Continue with other channels even if one fails
+		}
+	}
+
+	w.logger.Info("Notification processed successfully",
+		logrus.Fields{
+			"message_id": message.ID,
+			"user_id":    notificationData.UserID,
+			"type":       notificationData.Type,
+			"channels":   notificationData.Channels,
+		})
+
+	return nil
+}
+
+// processNotificationChannel processes notification for a specific channel
+func (w *NotificationWorker) processNotificationChannel(data NotificationData, channel string) error {
+	switch channel {
+	case "email":
+		return w.sendEmailNotification(data)
 	case "sms":
-		return w.processSMSNotification(message.Payload)
-	case "in_app":
-		return w.processInAppNotification(message.Payload)
-	case "webhook":
-		return w.processWebhookNotification(message.Payload)
+		return w.sendSMSNotification(data)
+	case "push":
+		return w.sendPushNotification(data)
+	case "in-app":
+		return w.sendInAppNotification(data)
 	default:
-		return fmt.Errorf("unknown notification type: %s", notificationType)
+		return fmt.Errorf("unsupported notification channel: %s", channel)
 	}
 }
 
-// processPushNotification processes push notifications
-func (w *NotificationWorker) processPushNotification(payload map[string]interface{}) error {
-	w.logger.Info("Processing push notification", zap.Any("payload", payload))
+// sendEmailNotification sends email notification
+func (w *NotificationWorker) sendEmailNotification(data NotificationData) error {
+	w.logger.Debug("Sending email notification",
+		logrus.Fields{
+			"user_id": data.UserID,
+			"type":    data.Type,
+		})
 
-	// Extract required fields
-	userID, _ := payload["user_id"].(string)
-	title, _ := payload["title"].(string)
-	body, _ := payload["body"].(string)
-	data, _ := payload["data"].(map[string]interface{})
+	// In a real implementation, you would:
+	// 1. Get user email from database
+	// 2. Create email message
+	// 3. Send via email worker or SMTP
 
-	// Validate required fields
-	if userID == "" || title == "" || body == "" {
-		return fmt.Errorf("missing required fields for push notification")
-	}
+	// Simulate email sending
+	time.Sleep(100 * time.Millisecond)
 
-	// Send push notification
-	// This is a placeholder - in a real implementation, you would integrate with
-	// services like Firebase Cloud Messaging (FCM), Apple Push Notification Service (APNS), etc.
-	
-	w.logger.Info("Sending push notification",
-		zap.String("user_id", userID),
-		zap.String("title", title),
-		zap.String("body", body),
-		zap.Any("data", data),
-	)
-
-	// Simulate sending push notification
-	// In real implementation:
-	// return w.pushNotificationService.Send(userID, title, body, data)
+	w.logger.Debug("Email notification sent successfully",
+		logrus.Fields{
+			"user_id": data.UserID,
+			"type":    data.Type,
+		})
 
 	return nil
 }
 
-// processSMSNotification processes SMS notifications
-func (w *NotificationWorker) processSMSNotification(payload map[string]interface{}) error {
-	w.logger.Info("Processing SMS notification", zap.Any("payload", payload))
+// sendSMSNotification sends SMS notification
+func (w *NotificationWorker) sendSMSNotification(data NotificationData) error {
+	w.logger.Debug("Sending SMS notification",
+		logrus.Fields{
+			"user_id": data.UserID,
+			"type":    data.Type,
+		})
 
-	// Extract required fields
-	phoneNumber, _ := payload["phone_number"].(string)
-	message, _ := payload["message"].(string)
+	// In a real implementation, you would:
+	// 1. Get user phone number from database
+	// 2. Use SMS service (Twilio, AWS SNS, etc.)
+	// 3. Send SMS message
 
-	// Validate required fields
-	if phoneNumber == "" || message == "" {
-		return fmt.Errorf("missing required fields for SMS notification")
-	}
+	// Simulate SMS sending
+	time.Sleep(200 * time.Millisecond)
 
-	// Send SMS
-	// This is a placeholder - in a real implementation, you would integrate with
-	// services like Twilio, AWS SNS, etc.
-	
-	w.logger.Info("Sending SMS notification",
-		zap.String("phone_number", phoneNumber),
-		zap.String("message", message),
-	)
-
-	// Simulate sending SMS
-	// In real implementation:
-	// return w.smsService.Send(phoneNumber, message)
+	w.logger.Debug("SMS notification sent successfully",
+		logrus.Fields{
+			"user_id": data.UserID,
+			"type":    data.Type,
+		})
 
 	return nil
 }
 
-// processInAppNotification processes in-app notifications
-func (w *NotificationWorker) processInAppNotification(payload map[string]interface{}) error {
-	w.logger.Info("Processing in-app notification", zap.Any("payload", payload))
+// sendPushNotification sends push notification
+func (w *NotificationWorker) sendPushNotification(data NotificationData) error {
+	w.logger.Debug("Sending push notification",
+		logrus.Fields{
+			"user_id": data.UserID,
+			"type":    data.Type,
+		})
 
-	// Extract required fields
-	userID, _ := payload["user_id"].(string)
-	title, _ := payload["title"].(string)
-	message, _ := payload["message"].(string)
-	actionURL, _ := payload["action_url"].(string)
+	// In a real implementation, you would:
+	// 1. Get user device tokens from database
+	// 2. Use push notification service (FCM, APNS, etc.)
+	// 3. Send push notification
 
-	// Validate required fields
-	if userID == "" || title == "" || message == "" {
-		return fmt.Errorf("missing required fields for in-app notification")
-	}
+	// Simulate push notification sending
+	time.Sleep(150 * time.Millisecond)
 
-	// Store in-app notification
-	// This would typically be stored in a database for the user to see when they log in
-	
-	notification := InAppNotification{
-		UserID:    userID,
-		Title:     title,
-		Message:   message,
-		ActionURL: actionURL,
-		Read:      false,
-	}
-
-	w.logger.Info("Storing in-app notification",
-		zap.String("user_id", userID),
-		zap.String("title", title),
-		zap.String("message", message),
-	)
-
-	// Simulate storing notification
-	// In real implementation:
-	// return w.notificationRepository.Create(notification)
-	
-	_ = notification // Prevent unused variable warning
+	w.logger.Debug("Push notification sent successfully",
+		logrus.Fields{
+			"user_id": data.UserID,
+			"type":    data.Type,
+		})
 
 	return nil
 }
 
-// processWebhookNotification processes webhook notifications
-func (w *NotificationWorker) processWebhookNotification(payload map[string]interface{}) error {
-	w.logger.Info("Processing webhook notification", zap.Any("payload", payload))
+// sendInAppNotification sends in-app notification
+func (w *NotificationWorker) sendInAppNotification(data NotificationData) error {
+	w.logger.Debug("Sending in-app notification",
+		logrus.Fields{
+			"user_id": data.UserID,
+			"type":    data.Type,
+		})
 
-	// Extract required fields
-	url, _ := payload["url"].(string)
-	method, _ := payload["method"].(string)
-	headers, _ := payload["headers"].(map[string]interface{})
-	body, _ := payload["body"].(map[string]interface{})
+	// In a real implementation, you would:
+	// 1. Store notification in database
+	// 2. Send via WebSocket to connected clients
+	// 3. Update notification counters
 
-	// Validate required fields
-	if url == "" {
-		return fmt.Errorf("missing URL for webhook notification")
-	}
+	// Simulate in-app notification processing
+	time.Sleep(50 * time.Millisecond)
 
-	if method == "" {
-		method = "POST" // Default to POST
-	}
-
-	// Send webhook
-	w.logger.Info("Sending webhook notification",
-		zap.String("url", url),
-		zap.String("method", method),
-		zap.Any("headers", headers),
-		zap.Any("body", body),
-	)
-
-	// Simulate sending webhook
-	// In real implementation:
-	// return w.webhookService.Send(url, method, headers, body)
+	w.logger.Debug("In-app notification sent successfully",
+		logrus.Fields{
+			"user_id": data.UserID,
+			"type":    data.Type,
+		})
 
 	return nil
 }
 
-// InAppNotification represents an in-app notification
-type InAppNotification struct {
-	ID        string `json:"id"`
-	UserID    string `json:"user_id"`
-	Title     string `json:"title"`
-	Message   string `json:"message"`
-	ActionURL string `json:"action_url,omitempty"`
-	Read      bool   `json:"read"`
-	CreatedAt string `json:"created_at"`
+// Helper function to convert map to struct
+func mapToStruct(m map[string]interface{}, v interface{}) error {
+	data, err := json.Marshal(m)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, v)
 }

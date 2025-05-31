@@ -47,6 +47,23 @@ services:
       timeout: 10s
       retries: 5
 
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+      RABBITMQ_DEFAULT_VHOST: /
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
   api:
     build:
       context: .
@@ -63,6 +80,11 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=admin
+      - RABBITMQ_PASSWORD=admin123
+      - RABBITMQ_VHOST=/
       - JWT_SECRET_KEY=your-super-secret-jwt-key-here
       - MIDTRANS_SERVER_KEY=your-midtrans-server-key
       - MIDTRANS_CLIENT_KEY=your-midtrans-client-key
@@ -76,9 +98,12 @@ services:
         condition: service_healthy
       elasticsearch:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
   postgres_data:
   redis_data:
   elasticsearch_data:
+  rabbitmq_data:

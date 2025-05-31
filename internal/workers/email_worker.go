@@ -2,13 +2,14 @@ package workers
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"net/smtp"
 	"path/filepath"
 
-	"go.uber.org/zap"
+	"github.com/sirupsen/logrus"
 
 	"online-shop/internal/infrastructure/queue"
 	"online-shop/pkg/config"
@@ -17,12 +18,12 @@ import (
 // EmailWorker handles email processing
 type EmailWorker struct {
 	config    *config.Config
-	logger    *zap.Logger
+	logger    *logrus.Logger
 	templates map[string]*template.Template
 }
 
 // NewEmailWorker creates a new email worker
-func NewEmailWorker(cfg *config.Config, logger *zap.Logger) *EmailWorker {
+func NewEmailWorker(cfg *config.Config, logger *logrus.Logger) *EmailWorker {
 	worker := &EmailWorker{
 		config:    cfg,
 		logger:    logger,
@@ -37,7 +38,7 @@ func NewEmailWorker(cfg *config.Config, logger *zap.Logger) *EmailWorker {
 
 // ProcessMessage processes an email message
 func (w *EmailWorker) ProcessMessage(message queue.Message) error {
-	w.logger.Info("Processing email message", zap.String("message_id", message.ID))
+	w.logger.Info("Processing email message", logrus.Fields{"message_id": message.ID})
 
 	// Parse email data
 	var emailData queue.EmailMessage
@@ -51,10 +52,11 @@ func (w *EmailWorker) ProcessMessage(message queue.Message) error {
 	}
 
 	w.logger.Info("Email sent successfully",
-		zap.String("message_id", message.ID),
-		zap.String("to", emailData.To),
-		zap.String("subject", emailData.Subject),
-	)
+		logrus.Fields{
+			"message_id": message.ID,
+			"to":         emailData.To,
+			"subject":    emailData.Subject,
+		})
 
 	return nil
 }
@@ -70,18 +72,82 @@ func (w *EmailWorker) sendEmail(email queue.EmailMessage) error {
 	// Prepare email message
 	msg := w.buildEmailMessage(email.To, email.Subject, body)
 
-	// SMTP authentication
-	auth := smtp.PlainAuth("",
-		w.config.SMTP.Username,
-		w.config.SMTP.Password,
-		w.config.SMTP.Host,
-	)
-
-	// Send email
+	// SMTP server address
 	addr := fmt.Sprintf("%s:%d", w.config.SMTP.Host, w.config.SMTP.Port)
-	err = smtp.SendMail(addr, auth, w.config.SMTP.From, []string{email.To}, []byte(msg))
+
+	// SMTP authentication (only if username is provided)
+	var auth smtp.Auth
+	if w.config.SMTP.Username != "" {
+		auth = smtp.PlainAuth("",
+			w.config.SMTP.Username,
+			w.config.SMTP.Password,
+			w.config.SMTP.Host,
+		)
+	}
+
+	// Send email with or without TLS
+	if w.config.SMTP.UseTLS {
+		err = w.sendEmailWithTLS(addr, auth, w.config.SMTP.From, []string{email.To}, []byte(msg))
+	} else {
+		err = smtp.SendMail(addr, auth, w.config.SMTP.From, []string{email.To}, []byte(msg))
+	}
+
 	if err != nil {
 		return fmt.Errorf("failed to send email via SMTP: %w", err)
+	}
+
+	return nil
+}
+
+// sendEmailWithTLS sends email using TLS connection
+func (w *EmailWorker) sendEmailWithTLS(addr string, auth smtp.Auth, from string, to []string, msg []byte) error {
+	// Create TLS configuration
+	tlsConfig := &tls.Config{
+		ServerName: w.config.SMTP.Host,
+	}
+
+	// Connect to SMTP server
+	conn, err := tls.Dial("tcp", addr, tlsConfig)
+	if err != nil {
+		return fmt.Errorf("failed to connect with TLS: %w", err)
+	}
+	defer conn.Close()
+
+	// Create SMTP client
+	client, err := smtp.NewClient(conn, w.config.SMTP.Host)
+	if err != nil {
+		return fmt.Errorf("failed to create SMTP client: %w", err)
+	}
+	defer client.Quit()
+
+	// Authenticate if auth is provided
+	if auth != nil {
+		if err := client.Auth(auth); err != nil {
+			return fmt.Errorf("SMTP authentication failed: %w", err)
+		}
+	}
+
+	// Set sender
+	if err := client.Mail(from); err != nil {
+		return fmt.Errorf("failed to set sender: %w", err)
+	}
+
+	// Set recipients
+	for _, recipient := range to {
+		if err := client.Rcpt(recipient); err != nil {
+			return fmt.Errorf("failed to set recipient %s: %w", recipient, err)
+		}
+	}
+
+	// Send message
+	writer, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("failed to get data writer: %w", err)
+	}
+	defer writer.Close()
+
+	if _, err := writer.Write(msg); err != nil {
+		return fmt.Errorf("failed to write message: %w", err)
 	}
 
 	return nil
@@ -335,12 +401,13 @@ func (w *EmailWorker) loadTemplates() {
 		templatePath := filepath.Join(templateDir, name+".html")
 		if tmpl, err := template.ParseFiles(templatePath); err == nil {
 			w.templates[name] = tmpl
-			w.logger.Info("Loaded email template", zap.String("template", name))
+			w.logger.Info("Loaded email template", logrus.Fields{"template": name})
 		} else {
 			w.logger.Warn("Failed to load email template", 
-				zap.String("template", name), 
-				zap.Error(err),
-			)
+				logrus.Fields{
+					"template": name,
+					"error":    err.Error(),
+				})
 		}
 	}
 }

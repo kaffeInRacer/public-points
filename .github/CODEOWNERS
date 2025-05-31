@@ -1,0 +1,47 @@
+# Global owners
+* @kaffeInRacer
+
+# Go source code
+*.go @kaffeInRacer
+go.mod @kaffeInRacer
+go.sum @kaffeInRacer
+
+# Configuration files
+*.yaml @kaffeInRacer
+*.yml @kaffeInRacer
+*.json @kaffeInRacer
+*.toml @kaffeInRacer
+
+# Docker files
+Dockerfile* @kaffeInRacer
+docker-compose*.yml @kaffeInRacer
+.dockerignore @kaffeInRacer
+
+# CI/CD workflows
+.github/ @kaffeInRacer
+.github/workflows/ @kaffeInRacer
+.github/dependabot.yml @kaffeInRacer
+
+# Documentation
+*.md @kaffeInRacer
+docs/ @kaffeInRacer
+
+# Scripts
+scripts/ @kaffeInRacer
+*.sh @kaffeInRacer
+
+# Tests
+tests/ @kaffeInRacer
+*_test.go @kaffeInRacer
+
+# Build and deployment
+Makefile @kaffeInRacer
+build/ @kaffeInRacer
+
+# Security and compliance
+SECURITY.md @kaffeInRacer
+LICENSE @kaffeInRacer
+
+# Database migrations
+migrations/ @kaffeInRacer
+*.sql @kaffeInRacer

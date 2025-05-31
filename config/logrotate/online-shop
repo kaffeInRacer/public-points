@@ -1,0 +1,145 @@
+# Logrotate configuration for online shop application
+# This file defines log rotation policies for all application logs
+
+# Application logs
+/var/log/online-shop/*.log {
+    daily
+    missingok
+    rotate 30
+    compress
+    delaycompress
+    notifempty
+    create 0644 www-data www-data
+    sharedscripts
+    postrotate
+        # Send SIGUSR1 to application to reopen log files
+        if [ -f /var/run/online-shop.pid ]; then
+            kill -USR1 `cat /var/run/online-shop.pid`
+        fi
+        # Restart rsyslog if needed
+        if [ -f /var/run/rsyslogd.pid ]; then
+            /etc/init.d/rsyslog reload > /dev/null 2>&1 || true
+        fi
+    endscript
+}
+
+# Error logs (more frequent rotation)
+/var/log/online-shop/error.log {
+    daily
+    missingok
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    create 0644 www-data www-data
+    size 10M
+    postrotate
+        if [ -f /var/run/online-shop.pid ]; then
+            kill -USR1 `cat /var/run/online-shop.pid`
+        fi
+    endscript
+}
+
+# Access logs (size-based rotation)
+/var/log/online-shop/access.log {
+    daily
+    missingok
+    rotate 52
+    compress
+    delaycompress
+    notifempty
+    create 0644 www-data www-data
+    size 100M
+    postrotate
+        if [ -f /var/run/online-shop.pid ]; then
+            kill -USR1 `cat /var/run/online-shop.pid`
+        fi
+    endscript
+}
+
+# Worker logs
+/var/log/online-shop/worker*.log {
+    daily
+    missingok
+    rotate 7
+    compress
+    delaycompress
+    notifempty
+    create 0644 www-data www-data
+    size 50M
+    postrotate
+        # Restart worker processes if needed
+        systemctl reload online-shop-workers 2>/dev/null || true
+    endscript
+}
+
+# Database logs
+/var/log/online-shop/database.log {
+    weekly
+    missingok
+    rotate 12
+    compress
+    delaycompress
+    notifempty
+    create 0644 postgres postgres
+    size 200M
+}
+
+# Performance logs
+/var/log/online-shop/performance.log {
+    daily
+    missingok
+    rotate 30
+    compress
+    delaycompress
+    notifempty
+    create 0644 www-data www-data
+    size 20M
+}
+
+# Security logs
+/var/log/online-shop/security.log {
+    daily
+    missingok
+    rotate 90
+    compress
+    delaycompress
+    notifempty
+    create 0644 root root
+    size 50M
+}
+
+# Audit logs (never delete, just compress)
+/var/log/online-shop/audit.log {
+    monthly
+    missingok
+    rotate 120
+    compress
+    delaycompress
+    notifempty
+    create 0600 root root
+    size 100M
+}
+
+# Backup logs
+/var/log/online-shop/backup.log {
+    weekly
+    missingok
+    rotate 8
+    compress
+    delaycompress
+    notifempty
+    create 0644 root root
+}
+
+# Cron logs
+/var/log/online-shop/cron.log {
+    daily
+    missingok
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    create 0644 root root
+    size 10M
+}

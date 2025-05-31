@@ -1,3 +1,5 @@
+environment: "production"
+
 server:
   host: "0.0.0.0"
   port: "12000"
@@ -28,8 +30,41 @@ jwt:
 midtrans:
   server_key: "your-midtrans-server-key"
   client_key: "your-midtrans-client-key"
-  environment: "sandbox"
+  environment: "production"
 
 grpc:
   host: "0.0.0.0"
   port: "12001"
+
+smtp:
+  host: "smtp.gmail.com"
+  port: 587
+  username: "your-email@gmail.com"
+  password: "your-app-password"
+  from: "noreply@onlineshop.com"
+  use_tls: true
+
+rabbitmq:
+  host: "localhost"
+  port: 5672
+  username: "admin"
+  password: "admin123"
+  vhost: "/"
+
+logger:
+  level: "info"
+  format: "json"
+  output: "file"
+  file_path: "/var/log/online-shop/app.log"
+  max_size: 100
+  max_backups: 5
+  max_age: 30
+  compress: true
+
+workers:
+  email_workers: 10
+  invoice_workers: 5
+  notification_workers: 5
+  analytics_workers: 3
+  max_retries: 3
+  retry_delay: 5

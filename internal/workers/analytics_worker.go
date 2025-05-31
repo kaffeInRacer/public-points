@@ -1,10 +1,11 @@
 package workers
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
-	"go.uber.org/zap"
+	"github.com/sirupsen/logrus"
 
 	"online-shop/internal/infrastructure/queue"
 	"online-shop/pkg/config"
@@ -13,11 +14,30 @@ import (
 // AnalyticsWorker handles analytics event processing
 type AnalyticsWorker struct {
 	config *config.Config
-	logger *zap.Logger
+	logger *logrus.Logger
+}
+
+// AnalyticsEvent represents an analytics event
+type AnalyticsEvent struct {
+	EventID     string                 `json:"event_id"`
+	UserID      string                 `json:"user_id,omitempty"`
+	SessionID   string                 `json:"session_id,omitempty"`
+	EventType   string                 `json:"event_type"`
+	EventName   string                 `json:"event_name"`
+	Properties  map[string]interface{} `json:"properties"`
+	Timestamp   time.Time              `json:"timestamp"`
+	IPAddress   string                 `json:"ip_address,omitempty"`
+	UserAgent   string                 `json:"user_agent,omitempty"`
+	Referrer    string                 `json:"referrer,omitempty"`
+	PageURL     string                 `json:"page_url,omitempty"`
+	DeviceType  string                 `json:"device_type,omitempty"`
+	Platform    string                 `json:"platform,omitempty"`
+	Country     string                 `json:"country,omitempty"`
+	City        string                 `json:"city,omitempty"`
 }
 
 // NewAnalyticsWorker creates a new analytics worker
-func NewAnalyticsWorker(cfg *config.Config, logger *zap.Logger) *AnalyticsWorker {
+func NewAnalyticsWorker(cfg *config.Config, logger *logrus.Logger) *AnalyticsWorker {
 	return &AnalyticsWorker{
 		config: cfg,
 		logger: logger,
@@ -26,289 +46,148 @@ func NewAnalyticsWorker(cfg *config.Config, logger *zap.Logger) *AnalyticsWorker
 
 // ProcessMessage processes an analytics message
 func (w *AnalyticsWorker) ProcessMessage(message queue.Message) error {
-	w.logger.Debug("Processing analytics message", zap.String("message_id", message.ID))
+	startTime := time.Now()
+	w.logger.Debug("Processing analytics message", logrus.Fields{"message_id": message.ID})
 
-	// Extract event type
-	eventType, ok := message.Payload["event_type"].(string)
-	if !ok {
-		return fmt.Errorf("missing event type")
+	// Parse analytics event
+	var event AnalyticsEvent
+	if err := mapToStruct(message.Payload, &event); err != nil {
+		return fmt.Errorf("failed to parse analytics event: %w", err)
 	}
 
-	// Process based on event type
-	switch eventType {
-	case "page_view":
-		return w.processPageView(message.Payload)
-	case "product_view":
-		return w.processProductView(message.Payload)
-	case "add_to_cart":
-		return w.processAddToCart(message.Payload)
-	case "purchase":
-		return w.processPurchase(message.Payload)
-	case "user_registration":
-		return w.processUserRegistration(message.Payload)
-	case "search":
-		return w.processSearch(message.Payload)
-	default:
-		return w.processGenericEvent(eventType, message.Payload)
-	}
-}
-
-// processPageView processes page view events
-func (w *AnalyticsWorker) processPageView(payload map[string]interface{}) error {
-	event := PageViewEvent{
-		UserID:    getStringValue(payload, "user_id"),
-		SessionID: getStringValue(payload, "session_id"),
-		Page:      getStringValue(payload, "page"),
-		Referrer:  getStringValue(payload, "referrer"),
-		UserAgent: getStringValue(payload, "user_agent"),
-		IPAddress: getStringValue(payload, "ip_address"),
-		Timestamp: time.Now(),
+	// Validate event
+	if err := w.validateEvent(event); err != nil {
+		return fmt.Errorf("invalid analytics event: %w", err)
 	}
 
-	w.logger.Debug("Processing page view event",
-		zap.String("user_id", event.UserID),
-		zap.String("page", event.Page),
-	)
-
-	// Store or send to analytics service
-	return w.storeEvent("page_view", event)
-}
-
-// processProductView processes product view events
-func (w *AnalyticsWorker) processProductView(payload map[string]interface{}) error {
-	event := ProductViewEvent{
-		UserID:     getStringValue(payload, "user_id"),
-		SessionID:  getStringValue(payload, "session_id"),
-		ProductID:  getStringValue(payload, "product_id"),
-		ProductSKU: getStringValue(payload, "product_sku"),
-		Category:   getStringValue(payload, "category"),
-		Price:      getFloatValue(payload, "price"),
-		Timestamp:  time.Now(),
+	// Process event
+	if err := w.processEvent(event); err != nil {
+		return fmt.Errorf("failed to process analytics event: %w", err)
 	}
 
-	w.logger.Debug("Processing product view event",
-		zap.String("user_id", event.UserID),
-		zap.String("product_id", event.ProductID),
-	)
-
-	return w.storeEvent("product_view", event)
-}
-
-// processAddToCart processes add to cart events
-func (w *AnalyticsWorker) processAddToCart(payload map[string]interface{}) error {
-	event := AddToCartEvent{
-		UserID:     getStringValue(payload, "user_id"),
-		SessionID:  getStringValue(payload, "session_id"),
-		ProductID:  getStringValue(payload, "product_id"),
-		ProductSKU: getStringValue(payload, "product_sku"),
-		Quantity:   getIntValue(payload, "quantity"),
-		Price:      getFloatValue(payload, "price"),
-		Timestamp:  time.Now(),
-	}
-
-	w.logger.Debug("Processing add to cart event",
-		zap.String("user_id", event.UserID),
-		zap.String("product_id", event.ProductID),
-		zap.Int("quantity", event.Quantity),
-	)
-
-	return w.storeEvent("add_to_cart", event)
-}
-
-// processPurchase processes purchase events
-func (w *AnalyticsWorker) processPurchase(payload map[string]interface{}) error {
-	event := PurchaseEvent{
-		UserID:      getStringValue(payload, "user_id"),
-		OrderID:     getStringValue(payload, "order_id"),
-		OrderNumber: getStringValue(payload, "order_number"),
-		TotalAmount: getFloatValue(payload, "total_amount"),
-		Currency:    getStringValue(payload, "currency"),
-		ItemCount:   getIntValue(payload, "item_count"),
-		Timestamp:   time.Now(),
-	}
-
-	// Extract items if available
-	if items, ok := payload["items"].([]interface{}); ok {
-		for _, item := range items {
-			if itemMap, ok := item.(map[string]interface{}); ok {
-				event.Items = append(event.Items, PurchaseItem{
-					ProductID:  getStringValue(itemMap, "product_id"),
-					ProductSKU: getStringValue(itemMap, "product_sku"),
-					Quantity:   getIntValue(itemMap, "quantity"),
-					Price:      getFloatValue(itemMap, "price"),
-				})
-			}
-		}
-	}
-
-	w.logger.Debug("Processing purchase event",
-		zap.String("user_id", event.UserID),
-		zap.String("order_id", event.OrderID),
-		zap.Float64("total_amount", event.TotalAmount),
-	)
-
-	return w.storeEvent("purchase", event)
-}
-
-// processUserRegistration processes user registration events
-func (w *AnalyticsWorker) processUserRegistration(payload map[string]interface{}) error {
-	event := UserRegistrationEvent{
-		UserID:    getStringValue(payload, "user_id"),
-		Email:     getStringValue(payload, "email"),
-		Source:    getStringValue(payload, "source"),
-		Referrer:  getStringValue(payload, "referrer"),
-		Timestamp: time.Now(),
-	}
-
-	w.logger.Debug("Processing user registration event",
-		zap.String("user_id", event.UserID),
-		zap.String("email", event.Email),
-	)
-
-	return w.storeEvent("user_registration", event)
-}
-
-// processSearch processes search events
-func (w *AnalyticsWorker) processSearch(payload map[string]interface{}) error {
-	event := SearchEvent{
-		UserID:      getStringValue(payload, "user_id"),
-		SessionID:   getStringValue(payload, "session_id"),
-		Query:       getStringValue(payload, "query"),
-		ResultCount: getIntValue(payload, "result_count"),
-		Timestamp:   time.Now(),
-	}
-
-	w.logger.Debug("Processing search event",
-		zap.String("user_id", event.UserID),
-		zap.String("query", event.Query),
-		zap.Int("result_count", event.ResultCount),
-	)
-
-	return w.storeEvent("search", event)
-}
-
-// processGenericEvent processes generic events
-func (w *AnalyticsWorker) processGenericEvent(eventType string, payload map[string]interface{}) error {
-	w.logger.Debug("Processing generic analytics event",
-		zap.String("event_type", eventType),
-		zap.Any("payload", payload),
-	)
-
-	return w.storeEvent(eventType, payload)
-}
-
-// storeEvent stores an event to the analytics storage
-func (w *AnalyticsWorker) storeEvent(eventType string, event interface{}) error {
-	// This is a placeholder for storing analytics events
-	// In a real implementation, you would:
-	// 1. Store in a time-series database (InfluxDB, TimescaleDB)
-	// 2. Send to analytics services (Google Analytics, Mixpanel, Amplitude)
-	// 3. Store in data warehouse (BigQuery, Redshift, Snowflake)
-	// 4. Send to real-time analytics (Apache Kafka, Amazon Kinesis)
-
-	w.logger.Debug("Storing analytics event",
-		zap.String("event_type", eventType),
-		zap.Any("event", event),
-	)
-
-	// Simulate storing event
-	// In real implementation:
-	// return w.analyticsRepository.Store(eventType, event)
-	// or
-	// return w.analyticsService.Send(eventType, event)
+	processingTime := time.Since(startTime)
+	w.logger.Info("Analytics event processed successfully",
+		logrus.Fields{
+			"message_id":      message.ID,
+			"event_id":        event.EventID,
+			"event_type":      event.EventType,
+			"event_name":      event.EventName,
+			"user_id":         event.UserID,
+			"processing_time": processingTime,
+		})
 
 	return nil
 }
 
-// Helper functions to extract values from payload
-func getStringValue(payload map[string]interface{}, key string) string {
-	if value, ok := payload[key].(string); ok {
-		return value
+// validateEvent validates the analytics event
+func (w *AnalyticsWorker) validateEvent(event AnalyticsEvent) error {
+	if event.EventID == "" {
+		return fmt.Errorf("event_id is required")
 	}
-	return ""
-}
 
-func getIntValue(payload map[string]interface{}, key string) int {
-	if value, ok := payload[key].(float64); ok {
-		return int(value)
+	if event.EventType == "" {
+		return fmt.Errorf("event_type is required")
 	}
-	if value, ok := payload[key].(int); ok {
-		return value
+
+	if event.EventName == "" {
+		return fmt.Errorf("event_name is required")
 	}
-	return 0
-}
 
-func getFloatValue(payload map[string]interface{}, key string) float64 {
-	if value, ok := payload[key].(float64); ok {
-		return value
+	if event.Timestamp.IsZero() {
+		return fmt.Errorf("timestamp is required")
 	}
-	if value, ok := payload[key].(int); ok {
-		return float64(value)
+
+	// Validate timestamp is not too old or in the future
+	now := time.Now()
+	if event.Timestamp.Before(now.Add(-24*time.Hour)) {
+		return fmt.Errorf("event timestamp is too old")
 	}
-	return 0.0
+
+	if event.Timestamp.After(now.Add(1*time.Hour)) {
+		return fmt.Errorf("event timestamp is in the future")
+	}
+
+	return nil
 }
 
-// Event structures
-type PageViewEvent struct {
-	UserID    string    `json:"user_id"`
-	SessionID string    `json:"session_id"`
-	Page      string    `json:"page"`
-	Referrer  string    `json:"referrer"`
-	UserAgent string    `json:"user_agent"`
-	IPAddress string    `json:"ip_address"`
-	Timestamp time.Time `json:"timestamp"`
+// processEvent processes the analytics event
+func (w *AnalyticsWorker) processEvent(event AnalyticsEvent) error {
+	w.logger.Debug("Processing analytics event",
+		logrus.Fields{
+			"event_id":   event.EventID,
+			"event_type": event.EventType,
+			"event_name": event.EventName,
+			"user_id":    event.UserID,
+		})
+
+	// Store event data
+	if err := w.storeEvent(event); err != nil {
+		return fmt.Errorf("failed to store event: %w", err)
+	}
+
+	// Update real-time metrics
+	if err := w.updateRealTimeMetrics(event); err != nil {
+		w.logger.Warn("Failed to update real-time metrics",
+			logrus.Fields{
+				"event_id": event.EventID,
+				"error":    err.Error(),
+			})
+		// Don't fail the entire processing for real-time metrics
+	}
+
+	return nil
 }
 
-type ProductViewEvent struct {
-	UserID     string    `json:"user_id"`
-	SessionID  string    `json:"session_id"`
-	ProductID  string    `json:"product_id"`
-	ProductSKU string    `json:"product_sku"`
-	Category   string    `json:"category"`
-	Price      float64   `json:"price"`
-	Timestamp  time.Time `json:"timestamp"`
+// storeEvent stores the analytics event
+func (w *AnalyticsWorker) storeEvent(event AnalyticsEvent) error {
+	w.logger.Debug("Storing analytics event",
+		logrus.Fields{
+			"event_id":   event.EventID,
+			"event_type": event.EventType,
+			"event_name": event.EventName,
+		})
+
+	// In a real implementation, you would:
+	// 1. Store in time-series database (InfluxDB, TimescaleDB)
+	// 2. Store in data warehouse (BigQuery, Redshift, Snowflake)
+	// 3. Send to analytics platforms (Google Analytics, Mixpanel, etc.)
+
+	// Simulate data storage
+	time.Sleep(50 * time.Millisecond)
+
+	w.logger.Debug("Analytics event stored successfully",
+		logrus.Fields{
+			"event_id": event.EventID,
+		})
+
+	return nil
 }
 
-type AddToCartEvent struct {
-	UserID     string    `json:"user_id"`
-	SessionID  string    `json:"session_id"`
-	ProductID  string    `json:"product_id"`
-	ProductSKU string    `json:"product_sku"`
-	Quantity   int       `json:"quantity"`
-	Price      float64   `json:"price"`
-	Timestamp  time.Time `json:"timestamp"`
+// updateRealTimeMetrics updates real-time metrics
+func (w *AnalyticsWorker) updateRealTimeMetrics(event AnalyticsEvent) error {
+	w.logger.Debug("Updating real-time metrics",
+		logrus.Fields{
+			"event_id":   event.EventID,
+			"event_type": event.EventType,
+		})
+
+	// In a real implementation, you would:
+	// 1. Update Redis counters
+	// 2. Send to real-time analytics dashboard
+	// 3. Update WebSocket connections for live data
+	// 4. Trigger alerts if thresholds are met
+
+	// Simulate real-time metrics update
+	time.Sleep(10 * time.Millisecond)
+
+	return nil
 }
 
-type PurchaseEvent struct {
-	UserID      string         `json:"user_id"`
-	OrderID     string         `json:"order_id"`
-	OrderNumber string         `json:"order_number"`
-	TotalAmount float64        `json:"total_amount"`
-	Currency    string         `json:"currency"`
-	ItemCount   int            `json:"item_count"`
-	Items       []PurchaseItem `json:"items"`
-	Timestamp   time.Time      `json:"timestamp"`
-}
-
-type PurchaseItem struct {
-	ProductID  string  `json:"product_id"`
-	ProductSKU string  `json:"product_sku"`
-	Quantity   int     `json:"quantity"`
-	Price      float64 `json:"price"`
-}
-
-type UserRegistrationEvent struct {
-	UserID    string    `json:"user_id"`
-	Email     string    `json:"email"`
-	Source    string    `json:"source"`
-	Referrer  string    `json:"referrer"`
-	Timestamp time.Time `json:"timestamp"`
-}
-
-type SearchEvent struct {
-	UserID      string    `json:"user_id"`
-	SessionID   string    `json:"session_id"`
-	Query       string    `json:"query"`
-	ResultCount int       `json:"result_count"`
-	Timestamp   time.Time `json:"timestamp"`
+// Helper function to convert map to struct
+func mapToStruct(m map[string]interface{}, v interface{}) error {
+	data, err := json.Marshal(m)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, v)
 }

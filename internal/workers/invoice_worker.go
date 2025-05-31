@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"go.uber.org/zap"
+	"github.com/sirupsen/logrus"
 
 	"online-shop/internal/infrastructure/queue"
 	"online-shop/pkg/config"
@@ -15,13 +15,13 @@ import (
 // InvoiceWorker handles invoice generation and email sending
 type InvoiceWorker struct {
 	config      *config.Config
-	logger      *zap.Logger
+	logger      *logrus.Logger
 	emailWorker *EmailWorker
 	rabbitmq    *queue.RabbitMQ
 }
 
 // NewInvoiceWorker creates a new invoice worker
-func NewInvoiceWorker(cfg *config.Config, logger *zap.Logger) *InvoiceWorker {
+func NewInvoiceWorker(cfg *config.Config, logger *logrus.Logger) *InvoiceWorker {
 	return &InvoiceWorker{
 		config:      cfg,
 		logger:      logger,
@@ -36,7 +36,7 @@ func (w *InvoiceWorker) SetRabbitMQ(rabbitmq *queue.RabbitMQ) {
 
 // ProcessMessage processes an invoice message
 func (w *InvoiceWorker) ProcessMessage(message queue.Message) error {
-	w.logger.Info("Processing invoice message", zap.String("message_id", message.ID))
+	w.logger.Info("Processing invoice message", logrus.Fields{"message_id": message.ID})
 
 	// Parse invoice data
 	var invoiceData queue.InvoiceMessage
@@ -56,10 +56,11 @@ func (w *InvoiceWorker) ProcessMessage(message queue.Message) error {
 	}
 
 	w.logger.Info("Invoice processed and sent successfully",
-		zap.String("message_id", message.ID),
-		zap.String("order_id", invoiceData.OrderID),
-		zap.String("user_email", invoiceData.UserEmail),
-	)
+		logrus.Fields{
+			"message_id":  message.ID,
+			"order_id":    invoiceData.OrderID,
+			"user_email":  invoiceData.UserEmail,
+		})
 
 	return nil
 }

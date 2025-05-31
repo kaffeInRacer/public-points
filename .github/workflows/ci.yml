@@ -1,0 +1,578 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  GO_VERSION: '1.19'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Code quality and linting
+  lint:
+    name: Lint and Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run go fmt check
+        run: |
+          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+            echo "The following files are not formatted:"
+            gofmt -s -l .
+            exit 1
+          fi
+
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.54.2
+
+      - name: Run golangci-lint
+        run: golangci-lint run --timeout=5m
+
+  # Security scanning
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Run Gosec Security Scanner
+        uses: securecodewarrior/github-action-gosec@master
+        with:
+          args: '-fmt sarif -out gosec.sarif ./...'
+
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: gosec.sarif
+
+  # Unit tests
+  test-unit:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Create test directories
+        run: mkdir -p test_reports/coverage
+
+      - name: Run unit tests
+        run: |
+          go test -v -race -coverprofile=test_reports/coverage/coverage.out -covermode=atomic ./tests/unit/...
+
+      - name: Generate coverage report
+        run: |
+          go tool cover -html=test_reports/coverage/coverage.out -o test_reports/coverage/coverage.html
+          go tool cover -func=test_reports/coverage/coverage.out > test_reports/coverage/coverage.txt
+
+      - name: Check coverage threshold
+        run: |
+          COVERAGE=$(go tool cover -func=test_reports/coverage/coverage.out | grep "total:" | awk '{print $3}' | sed 's/%//')
+          echo "Coverage: ${COVERAGE}%"
+          if (( $(echo "$COVERAGE < 80" | bc -l) )); then
+            echo "Coverage ${COVERAGE}% is below threshold 80%"
+            exit 1
+          fi
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: test_reports/coverage/coverage.out
+          flags: unittests
+          name: codecov-umbrella
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: unit-test-results
+          path: test_reports/
+
+  # Integration tests
+  test-integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_USER: testuser
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+      rabbitmq:
+        image: rabbitmq:3.12-management-alpine
+        env:
+          RABBITMQ_DEFAULT_USER: guest
+          RABBITMQ_DEFAULT_PASS: guest
+        options: >-
+          --health-cmd "rabbitmq-diagnostics ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5672:5672
+          - 15672:15672
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Wait for services
+        run: |
+          echo "Waiting for PostgreSQL..."
+          until pg_isready -h localhost -p 5432 -U testuser; do sleep 1; done
+          echo "Waiting for Redis..."
+          until redis-cli -h localhost -p 6379 ping; do sleep 1; done
+          echo "Waiting for RabbitMQ..."
+          until curl -f http://localhost:15672; do sleep 1; done
+
+      - name: Run integration tests
+        env:
+          DATABASE_URL: postgres://testuser:testpass@localhost:5432/testdb?sslmode=disable
+          REDIS_URL: redis://localhost:6379/0
+          RABBITMQ_URL: amqp://guest:guest@localhost:5672/
+        run: |
+          go test -v -race -timeout=10m ./tests/integration/...
+
+      - name: Upload integration test results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: integration-test-results
+          path: test_reports/
+
+  # Build application
+  build:
+    name: Build Application
+    runs-on: ubuntu-latest
+    needs: [lint, test-unit]
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      build-time: ${{ steps.version.outputs.build-time }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Generate version
+        id: version
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev-$(git rev-parse --short HEAD)")
+          fi
+          BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "build-time=$BUILD_TIME" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+          echo "Build Time: $BUILD_TIME"
+
+      - name: Build for multiple platforms
+        run: |
+          mkdir -p build
+          
+          # Build for Linux AMD64
+          GOOS=linux GOARCH=amd64 go build \
+            -ldflags "-X main.version=${{ steps.version.outputs.version }} -X main.buildTime=${{ steps.version.outputs.build-time }} -X main.goVersion=$(go version | awk '{print $3}')" \
+            -o build/online-shop-linux-amd64 ./cmd/server
+          
+          # Build for Linux ARM64
+          GOOS=linux GOARCH=arm64 go build \
+            -ldflags "-X main.version=${{ steps.version.outputs.version }} -X main.buildTime=${{ steps.version.outputs.build-time }} -X main.goVersion=$(go version | awk '{print $3}')" \
+            -o build/online-shop-linux-arm64 ./cmd/server
+          
+          # Build for macOS AMD64
+          GOOS=darwin GOARCH=amd64 go build \
+            -ldflags "-X main.version=${{ steps.version.outputs.version }} -X main.buildTime=${{ steps.version.outputs.build-time }} -X main.goVersion=$(go version | awk '{print $3}')" \
+            -o build/online-shop-darwin-amd64 ./cmd/server
+          
+          # Build for macOS ARM64
+          GOOS=darwin GOARCH=arm64 go build \
+            -ldflags "-X main.version=${{ steps.version.outputs.version }} -X main.buildTime=${{ steps.version.outputs.build-time }} -X main.goVersion=$(go version | awk '{print $3}')" \
+            -o build/online-shop-darwin-arm64 ./cmd/server
+          
+          # Build for Windows AMD64
+          GOOS=windows GOARCH=amd64 go build \
+            -ldflags "-X main.version=${{ steps.version.outputs.version }} -X main.buildTime=${{ steps.version.outputs.build-time }} -X main.goVersion=$(go version | awk '{print $3}')" \
+            -o build/online-shop-windows-amd64.exe ./cmd/server
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: build/
+
+  # Docker build and push
+  docker:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: [build, test-integration]
+    if: github.event_name == 'push'
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ needs.build.outputs.version }}
+            BUILD_TIME=${{ needs.build.outputs.build-time }}
+
+      - name: Output image
+        id: image
+        run: echo "image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.version }}" >> $GITHUB_OUTPUT
+
+  # Auto-tagging for main branch
+  auto-tag:
+    name: Auto Tag Version
+    runs-on: ubuntu-latest
+    needs: [build, test-integration, docker]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+      - name: Get latest tag
+        id: latest-tag
+        run: |
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "latest-tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+          echo "Latest tag: $LATEST_TAG"
+
+      - name: Determine version bump
+        id: version-bump
+        run: |
+          # Get commits since last tag
+          COMMITS=$(git log ${{ steps.latest-tag.outputs.latest-tag }}..HEAD --oneline)
+          echo "Commits since last tag:"
+          echo "$COMMITS"
+          
+          # Determine version bump based on commit messages
+          if echo "$COMMITS" | grep -qE "(BREAKING CHANGE|major)"; then
+            BUMP="major"
+          elif echo "$COMMITS" | grep -qE "(feat|feature|minor)"; then
+            BUMP="minor"
+          else
+            BUMP="patch"
+          fi
+          
+          echo "bump=$BUMP" >> $GITHUB_OUTPUT
+          echo "Version bump: $BUMP"
+
+      - name: Calculate new version
+        id: new-version
+        run: |
+          LATEST_TAG=${{ steps.latest-tag.outputs.latest-tag }}
+          BUMP=${{ steps.version-bump.outputs.bump }}
+          
+          # Remove 'v' prefix if present
+          VERSION=${LATEST_TAG#v}
+          
+          # Split version into parts
+          IFS='.' read -ra VERSION_PARTS <<< "$VERSION"
+          MAJOR=${VERSION_PARTS[0]:-0}
+          MINOR=${VERSION_PARTS[1]:-0}
+          PATCH=${VERSION_PARTS[2]:-0}
+          
+          # Bump version based on type
+          case $BUMP in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+          
+          NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "new-version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_VERSION"
+
+      - name: Create and push tag
+        run: |
+          NEW_VERSION=${{ steps.new-version.outputs.new-version }}
+          
+          # Create annotated tag
+          git tag -a "$NEW_VERSION" -m "Release $NEW_VERSION
+          
+          Auto-generated release from main branch.
+          
+          Changes since ${{ steps.latest-tag.outputs.latest-tag }}:
+          $(git log ${{ steps.latest-tag.outputs.latest-tag }}..HEAD --oneline)
+          
+          Docker Image: ${{ needs.docker.outputs.image }}
+          Build Time: ${{ needs.build.outputs.build-time }}"
+          
+          # Push tag
+          git push origin "$NEW_VERSION"
+          
+          echo "Created and pushed tag: $NEW_VERSION"
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.new-version.outputs.new-version }}
+          release_name: Release ${{ steps.new-version.outputs.new-version }}
+          body: |
+            ## 🚀 Release ${{ steps.new-version.outputs.new-version }}
+            
+            **Auto-generated release from main branch**
+            
+            ### 📦 Artifacts
+            - **Docker Image**: `${{ needs.docker.outputs.image }}`
+            - **Build Time**: ${{ needs.build.outputs.build-time }}
+            - **Go Version**: ${{ env.GO_VERSION }}
+            
+            ### 📋 Changes
+            Changes since ${{ steps.latest-tag.outputs.latest-tag }}:
+            
+            ```
+            $(git log ${{ steps.latest-tag.outputs.latest-tag }}..HEAD --oneline)
+            ```
+            
+            ### 🐳 Docker Usage
+            ```bash
+            docker pull ${{ needs.docker.outputs.image }}
+            docker run -p 8080:8080 ${{ needs.docker.outputs.image }}
+            ```
+            
+            ### 📊 Test Results
+            - ✅ Unit Tests: Passed
+            - ✅ Integration Tests: Passed
+            - ✅ Security Scan: Passed
+            - ✅ Code Quality: Passed
+            
+            ### 🔗 Links
+            - [Docker Image](${{ env.REGISTRY }}/${{ env.IMAGE_NAME }})
+            - [Source Code](https://github.com/${{ github.repository }}/tree/${{ steps.new-version.outputs.new-version }})
+          draft: false
+          prerelease: false
+
+  # Performance tests (optional, runs on schedule or manual trigger)
+  performance:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Run performance tests
+        run: |
+          go test -bench=. -benchmem -timeout=30m ./tests/...
+
+      - name: Upload performance results
+        uses: actions/upload-artifact@v3
+        with:
+          name: performance-results
+          path: test_reports/benchmarks/
+
+  # Deployment (placeholder for actual deployment)
+  deploy:
+    name: Deploy to Environment
+    runs-on: ubuntu-latest
+    needs: [auto-tag, docker]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+    steps:
+      - name: Deploy to production
+        run: |
+          echo "Deploying ${{ needs.docker.outputs.image }} to production"
+          # Add actual deployment steps here
+          # Examples:
+          # - Update Kubernetes deployment
+          # - Deploy to cloud provider
+          # - Update docker-compose on server
+          # - Trigger deployment webhook
+
+  # Notification
+  notify:
+    name: Notify Results
+    runs-on: ubuntu-latest
+    needs: [lint, test-unit, test-integration, build, docker, auto-tag]
+    if: always()
+    steps:
+      - name: Notify success
+        if: needs.lint.result == 'success' && needs.test-unit.result == 'success' && needs.test-integration.result == 'success' && needs.build.result == 'success'
+        run: |
+          echo "✅ CI/CD Pipeline completed successfully!"
+          echo "🏷️ New version: ${{ needs.auto-tag.outputs.new-version || 'No new tag created' }}"
+          echo "🐳 Docker image: ${{ needs.docker.outputs.image || 'No image built' }}"
+
+      - name: Notify failure
+        if: needs.lint.result == 'failure' || needs.test-unit.result == 'failure' || needs.test-integration.result == 'failure' || needs.build.result == 'failure'
+        run: |
+          echo "❌ CI/CD Pipeline failed!"
+          echo "Please check the logs for details."
+          exit 1

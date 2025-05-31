@@ -1,0 +1,70 @@
+environment: "development"
+
+server:
+  host: "0.0.0.0"
+  port: "12000"
+
+database:
+  host: "localhost"
+  port: "5432"
+  user: "postgres"
+  password: "postgres"
+  dbname: "online_shop_dev"
+  sslmode: "disable"
+
+redis:
+  host: "localhost"
+  port: "6379"
+  password: ""
+  db: 1
+
+elasticsearch:
+  url: "http://localhost:9200"
+  username: ""
+  password: ""
+
+jwt:
+  secret_key: "dev-secret-key-not-for-production"
+  expiry_hours: 24
+
+midtrans:
+  server_key: "SB-Mid-server-your-sandbox-server-key"
+  client_key: "SB-Mid-client-your-sandbox-client-key"
+  environment: "sandbox"
+
+grpc:
+  host: "0.0.0.0"
+  port: "12001"
+
+smtp:
+  host: "localhost"
+  port: 1025
+  username: ""
+  password: ""
+  from: "dev@localhost"
+  use_tls: false
+
+rabbitmq:
+  host: "localhost"
+  port: 5672
+  username: "guest"
+  password: "guest"
+  vhost: "/"
+
+logger:
+  level: "debug"
+  format: "text"
+  output: "stdout"
+  file_path: "./logs/app.log"
+  max_size: 50
+  max_backups: 3
+  max_age: 7
+  compress: false
+
+workers:
+  email_workers: 2
+  invoice_workers: 1
+  notification_workers: 1
+  analytics_workers: 1
+  max_retries: 2
+  retry_delay: 3
